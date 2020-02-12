@@ -1,24 +1,25 @@
+const GRID_SIZE = 210;
+let offset = [0, 0];
+let selected = null;
+let selected2 = null;
+
 function addTask() {
     const task = createTask();
     document.querySelector('#container-main').appendChild(task);
+    task.focus();
 }
 
 function createTask() {
     const task = document.createElement('div');
+
     task.setAttribute('contenteditable', true);
     task.setAttribute('tabindex', '0');
-
-    task.addEventListener('mousedown', mouseDown);
-    task.addEventListener("onkeydown", onInput);
-    task.addEventListener("focus", event => {
-        selected2 = event.currentTarget
-    }, true);
-
-    task.addEventListener("blur", event => {
-        selected2 = null;
-    }, true);
-
     task.classList.add('Task');
+
+
+
+    addTaskListeners(task);
+
     task.innerHTML = `
         <h3> Task </h3>
         <span> Some useful text </span>
@@ -29,13 +30,8 @@ function createTask() {
 function addTaskListeners(task) {
     task.addEventListener('mousedown', mouseDown);
     task.addEventListener("onkeydown", onInput);
-    task.addEventListener("focus", event => {
-        selected2 = event.currentTarget
-    }, true);
-
-    task.addEventListener("blur", event => {
-        selected2 = null;
-    }, true);
+    task.addEventListener("focus", event => selected2 = event.currentTarget, true);
+    task.addEventListener("blur", () => selected2 = null, true);
 }
 
 function startCommandMode() {
@@ -78,37 +74,69 @@ function mouseMove(event) {
     event.preventDefault();
     event.stopPropagation();
     if (selected) {
-        selected.style.left = ((event.clientX + offset[0])) + 'px';
-        selected.style.top = ((event.clientY + offset[1])) + 'px';
+        const { x, y } = {
+            x: event.shiftKey ? round(event.clientX + offset[0], GRID_SIZE) : event.clientX + offset[0],
+            y: event.shiftKey ? round(event.clientY + offset[1], GRID_SIZE / 2) : event.clientY + offset[1],
+        }
+        selected.style.left = x + 'px';
+        selected.style.top = y + 'px';
     }
 }
 
-var mousePosition;
-var offset = [0, 0];
-var div;
-var isDown = false;
+function persistState() {
+    localStorage.setItem('task.status', document.querySelector('#container-main').innerHTML);
+}
 
-let selected = null;
-let selected2 = null;
+function loadState() {
+    const status = localStorage.getItem('task.status');
+    if (status) {
+        document.querySelector('#container-main').innerHTML = status;
+        document.querySelectorAll('.Task').forEach(task => {
+            addTaskListeners(task);
+        });
+    }
+}
 
+function moveTask(task, x, y) {
+    task.style.left = task.offsetLeft + x + 'px';
+    task.style.top = task.offsetTop + y + 'px';
+}
+
+function round(value, grid) {
+    return (value / grid).toFixed() * grid;
+}
+
+function showCmd() {
+    document.querySelector('aside').style.bottom = '0px';
+    document.querySelector('#input-cmd').focus();
+}
+
+function hideCmd() {
+    document.querySelector('aside').style.bottom = '-90px';
+}
+
+function isCmdVisible() {
+    return document.querySelector('aside').style.bottom == '0px';
+}
+
+
+window.onbeforeunload = persistState;
 
 document.addEventListener('mouseup', mouseUp, true);
 
 document.addEventListener('mousemove', mouseMove, true);
 
-window.onbeforeunload = function (event) {
-    localStorage.setItem('task.status', document.querySelector('#container-main').innerHTML);
-};
+document.addEventListener('load', loadState, true);
 
 document.addEventListener("keydown", function (event) {
-    if (event.keyCode == 27 && window.__task__cmd__on) {
+    if (event.keyCode == 27 && isCmdVisible()) {
         event.preventDefault();
-        stopCommandMode();
+        hideCmd();
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key == 'p') {
         event.preventDefault();
-        return startCommandMode();
+        return showCmd();
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key == 'n') {
@@ -125,6 +153,27 @@ document.addEventListener("keydown", function (event) {
         event.preventDefault();
         deleteTask(selected2);
         return;
+    }
+
+    if (event.metaKey) {
+        switch (event.keyCode) {
+            case 37:
+                event.preventDefault();
+                moveTask(selected2, -GRID_SIZE, 0);
+                return
+            case 38:
+                event.preventDefault();
+                moveTask(selected2, 0, -GRID_SIZE / 2);
+                return
+            case 39:
+                event.preventDefault();
+                moveTask(selected2, GRID_SIZE, 0);
+                return
+            case 40:
+                event.preventDefault();
+                moveTask(selected2, 0, GRID_SIZE / 2);
+                return
+        }
     }
 
     if (event.metaKey) {
@@ -152,10 +201,17 @@ document.addEventListener("keydown", function (event) {
     }
 });
 
-const status = localStorage.getItem('task.status');
-if (status) {
-    document.querySelector('#container-main').innerHTML = status;
-    document.querySelectorAll('.Task').forEach(task => {
-        addTaskListeners(task);
-    });
-}
+document.querySelector('#input-cmd').addEventListener('change', event => {
+    const cmd = event.target.value;
+    document.querySelector('#input-cmd').value = '';
+    debugger;
+    switch (cmd) {
+        case ':new':
+            addTask();
+            break;
+    
+        default:
+            break;
+    }
+});
+
