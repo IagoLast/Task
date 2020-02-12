@@ -1,19 +1,28 @@
 const GRID_SIZE = 210;
-let offset = [0, 0];
-let selected = null;
-let selected2 = null;
+let draggedTask = null;
+let draggedTaskOffset = [0, 0];
+let taskWithFocus = null;
 
 function addTask() {
-    const task = createTask();
+    const id = getTaskId()
+    const task = createTask({ id });
     document.querySelector('#container-main').appendChild(task);
+    document.querySelector('#container-main').setAttribute('data-last-task-id', id);
     task.focus();
 }
 
-function createTask() {
+function getTaskId() {
+    const id = parseInt(document.querySelector('#container-main').getAttribute('data-last-task-id'));
+    return id + 1;
+}
+
+function createTask({ id }) {
     const task = document.createElement('div');
 
     task.setAttribute('contenteditable', true);
     task.setAttribute('tabindex', '0');
+
+    task.setAttribute('data-id', id);
     task.classList.add('Task');
 
 
@@ -21,7 +30,7 @@ function createTask() {
     addTaskListeners(task);
 
     task.innerHTML = `
-        <h3> Task </h3>
+        <h3> ISSUE-00${id} </h3>
         <span> Some useful text </span>
     `
     return task;
@@ -30,8 +39,8 @@ function createTask() {
 function addTaskListeners(task) {
     task.addEventListener('mousedown', mouseDown);
     task.addEventListener("onkeydown", onInput);
-    task.addEventListener("focus", event => selected2 = event.currentTarget, true);
-    task.addEventListener("blur", () => selected2 = null, true);
+    task.addEventListener("focus", event => taskWithFocus = event.currentTarget, true);
+    task.addEventListener("blur", () => taskWithFocus = null, true);
 }
 
 function startCommandMode() {
@@ -59,37 +68,40 @@ function makeDraggable(element) {
 }
 
 function mouseDown(event) {
-    selected = event.currentTarget;
-    offset = [
-        selected.offsetLeft - event.clientX,
-        selected.offsetTop - event.clientY
+    draggedTask = event.currentTarget;
+    draggedTaskOffset = [
+        draggedTask.offsetLeft - event.clientX,
+        draggedTask.offsetTop - event.clientY
     ];
 }
 
 function mouseUp() {
-    selected = null;
+    draggedTask = null;
 }
 
 function mouseMove(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (selected) {
+    if (draggedTask) {
         const { x, y } = {
-            x: event.shiftKey ? round(event.clientX + offset[0], GRID_SIZE) : event.clientX + offset[0],
-            y: event.shiftKey ? round(event.clientY + offset[1], GRID_SIZE / 2) : event.clientY + offset[1],
+            x: event.shiftKey ? round(event.clientX + draggedTaskOffset[0], GRID_SIZE) : event.clientX + draggedTaskOffset[0],
+            y: event.shiftKey ? round(event.clientY + draggedTaskOffset[1], GRID_SIZE / 2) : event.clientY + draggedTaskOffset[1],
         }
-        selected.style.left = x + 'px';
-        selected.style.top = y + 'px';
+        draggedTask.style.left = x + 'px';
+        draggedTask.style.top = y + 'px';
     }
 }
 
 function persistState() {
     localStorage.setItem('task.status', document.querySelector('#container-main').innerHTML);
+    localStorage.setItem('task.lastID', document.querySelector('#container-main').getAttribute('data-last-task-id'));
 }
 
 function loadState() {
     const status = localStorage.getItem('task.status');
-    if (status) {
+    if (status !== null && status.trim() !== '') {
+        const lastID = parseInt(localStorage.getItem('task.lastID'));
+        document.querySelector('#container-main').setAttribute('data-last-task-id', lastID);
         document.querySelector('#container-main').innerHTML = status;
         document.querySelectorAll('.Task').forEach(task => {
             addTaskListeners(task);
@@ -119,14 +131,28 @@ function isCmdVisible() {
     return document.querySelector('aside').style.bottom == '0px';
 }
 
+function addLink(taskID, link) {
+    const task = document.querySelector(`[data-id="${taskID}"]`);
+    const a = document.createElement('a');
+    a.setAttribute('href', link);
+    a.setAttribute('target', '_blank');
+    a.innerText = link;
+    task.appendChild(a);
+}
 
-window.onbeforeunload = persistState;
+function assignTask(taskID) {
+    const task = document.querySelector(`[data-id="${taskID}"]`);
+    const a = document.createElement('img');
+    a.classList.add('Asignee');
+    a.setAttribute('src', '/avatar.png');
+    task.appendChild(a);
+
+}
+
 
 document.addEventListener('mouseup', mouseUp, true);
 
 document.addEventListener('mousemove', mouseMove, true);
-
-document.addEventListener('load', loadState, true);
 
 document.addEventListener("keydown", function (event) {
     if (event.keyCode == 27 && isCmdVisible()) {
@@ -136,7 +162,8 @@ document.addEventListener("keydown", function (event) {
 
     if ((event.ctrlKey || event.metaKey) && event.key == 'p') {
         event.preventDefault();
-        return showCmd();
+        isCmdVisible() ? hideCmd() : showCmd();
+        return;
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key == 'n') {
@@ -145,13 +172,13 @@ document.addEventListener("keydown", function (event) {
         return;
     }
 
-    if (!selected2) {
+    if (!taskWithFocus) {
         return;
     }
 
     if (event.ctrlKey && event.key == 'd') {
         event.preventDefault();
-        deleteTask(selected2);
+        deleteTask(taskWithFocus);
         return;
     }
 
@@ -159,19 +186,19 @@ document.addEventListener("keydown", function (event) {
         switch (event.keyCode) {
             case 37:
                 event.preventDefault();
-                moveTask(selected2, -GRID_SIZE, 0);
+                moveTask(taskWithFocus, -GRID_SIZE, 0);
                 return
             case 38:
                 event.preventDefault();
-                moveTask(selected2, 0, -GRID_SIZE / 2);
+                moveTask(taskWithFocus, 0, -GRID_SIZE / 2);
                 return
             case 39:
                 event.preventDefault();
-                moveTask(selected2, GRID_SIZE, 0);
+                moveTask(taskWithFocus, GRID_SIZE, 0);
                 return
             case 40:
                 event.preventDefault();
-                moveTask(selected2, 0, GRID_SIZE / 2);
+                moveTask(taskWithFocus, 0, GRID_SIZE / 2);
                 return
         }
     }
@@ -179,22 +206,22 @@ document.addEventListener("keydown", function (event) {
     if (event.metaKey) {
         switch (event.key) {
             case 'd':
-                deleteTask(selected2);
+                deleteTask(taskWithFocus);
                 event.preventDefault();
             case '1':
-                selected2.style.borderBottom = '8px solid limegreen';
+                taskWithFocus.style.borderBottom = '8px solid limegreen';
                 event.preventDefault();
                 break;
             case '2':
-                selected2.style.borderBottom = '8px solid orange';
+                taskWithFocus.style.borderBottom = '8px solid orange';
                 event.preventDefault();
                 break;
             case '3':
-                selected2.style.borderBottom = '8px solid tomato';
+                taskWithFocus.style.borderBottom = '8px solid tomato';
                 event.preventDefault();
                 break;
             case '4':
-                selected2.style.borderBottom = '8px solid royalblue';
+                taskWithFocus.style.borderBottom = '8px solid royalblue';
                 event.preventDefault();
                 break;
         }
@@ -202,16 +229,36 @@ document.addEventListener("keydown", function (event) {
 });
 
 document.querySelector('#input-cmd').addEventListener('change', event => {
-    const cmd = event.target.value;
+    let cmd, taskid, url;
+    const CMD_REGEX = /:[a-z]*/;
+
+    const input = event.target.value;
+    [cmd] = CMD_REGEX.exec(event.target.value);
     document.querySelector('#input-cmd').value = '';
-    debugger;
+
     switch (cmd) {
         case ':new':
             addTask();
+            hideCmd();
             break;
-    
+        case ':clean':
+            document.querySelector('#container-main').setAttribute('data-last-task-id', 0);
+            document.querySelector('#container-main').innerHTML = '';
+            break;
+        case ':link':
+            [cmd, taskId, url] = input.match(/([\S]+)/g);
+            addLink(taskId, url);
+            break;
+        case ':asign':
+            [cmd, taskId] = input.match(/([\S]+)/g);
+            assignTask(taskId);
+            break;
+
         default:
             break;
     }
 });
 
+window.onbeforeunload = persistState;
+
+loadState();
